@@ -12,7 +12,7 @@ const justPressed = {};
 window.addEventListener('keydown', e => {
   justPressed[e.code] = !keys[e.code];
   keys[e.code] = true;
-  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code))
+  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'].includes(e.code))
     e.preventDefault();
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
@@ -61,6 +61,9 @@ class Bullet {
 const RADII  = [0, 16, 30, 50];   // por tamaño 1, 2, 3
 const SPEEDS = [0, 85, 55, 32];   // velocidad base por tamaño
 const POINTS = [0, 100, 50, 20];  // puntos por tamaño
+
+const SHIELD_COOLDOWN = 10;
+const SHIELD_RADIUS   = 22;
 
 class Asteroid {
   constructor(x, y, size = 3) {
@@ -232,6 +235,8 @@ class Ship {
     this.invincible    = 3;
     this.shootCooldown = 0;
     this.speedBoost    = 0;
+    this.shieldActive   = false;
+    this.shieldCooldown = 0;
     this.dead          = false;
   }
 
@@ -240,6 +245,15 @@ class Ship {
     if (this.invincible    > 0) this.invincible    -= dt;
     if (this.shootCooldown > 0) this.shootCooldown -= dt;
     if (this.speedBoost    > 0) this.speedBoost    -= dt;
+    if (this.shieldCooldown > 0) this.shieldCooldown -= dt;
+
+    if (pressed('ShiftLeft') || pressed('ShiftRight')) {
+      if (this.shieldActive) {
+        this.shieldActive = false;
+      } else if (this.shieldCooldown <= 0) {
+        this.shieldActive = true;
+      }
+    }
 
     const ROT   = 3.5;   // rad/s
     const THRUST = 260;  // px/s²
@@ -302,6 +316,21 @@ class Ship {
       ctx.beginPath();
       ctx.arc(this.x, this.y, this.radius + 8, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.restore();
+    }
+
+    if (this.shieldActive) {
+      const pulse = 0.5 + 0.3 * Math.sin(performance.now() / 100);
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      ctx.strokeStyle = '#00ccff';
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = '#00ccff';
+      ctx.shadowBlur = 15;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, SHIELD_RADIUS, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
       ctx.restore();
     }
 
@@ -603,7 +632,17 @@ function update(dt) {
   if (ship.invincible <= 0) {
     for (const a of asteroids) {
       if (dist(ship, a) < ship.radius + a.radius * 0.82) {
-        killShip();
+        if (ship.shieldActive) {
+          ship.shieldActive = false;
+          ship.shieldCooldown = SHIELD_COOLDOWN;
+          a.dead = true;
+          score += POINTS[a.size];
+          explode(a.x, a.y, a.size * 5);
+          asteroids = asteroids.filter(ast => !ast.dead).concat(a.split());
+          screenFlash = 0.2;
+        } else {
+          killShip();
+        }
         break;
       }
     }
@@ -613,7 +652,16 @@ function update(dt) {
   if (ship.invincible <= 0) {
     for (const s of shootingStars) {
       if (dist(ship, s) < ship.radius + s.radius * 0.82) {
-        killShip();
+        if (ship.shieldActive) {
+          ship.shieldActive = false;
+          ship.shieldCooldown = SHIELD_COOLDOWN;
+          s.dead = true;
+          score += SHOOTING_STAR_POINTS;
+          explode(s.x, s.y, 18);
+          screenFlash = 0.2;
+        } else {
+          killShip();
+        }
         break;
       }
     }
@@ -662,6 +710,25 @@ function drawHUD() {
     ctx.fillRect(14, 54, 120, 5);
     ctx.fillStyle = '#ffcc00';
     ctx.fillRect(14, 54, 120 * (ship.speedBoost / 5), 5);
+  }
+
+  const shieldY = ship.speedBoost > 0 ? 70 : 48;
+  if (ship.shieldActive) {
+    ctx.fillStyle = '#00ccff';
+    ctx.textAlign = 'left';
+    ctx.fillText('ESCUDO ACTIVO', 14, shieldY);
+  } else if (ship.shieldCooldown > 0) {
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.textAlign = 'left';
+    ctx.fillText(`ESCUDO  ${ship.shieldCooldown.toFixed(1)}s`, 14, shieldY);
+    ctx.fillStyle = 'rgba(0,204,255,0.2)';
+    ctx.fillRect(14, shieldY + 6, 120, 5);
+    ctx.fillStyle = '#00ccff';
+    ctx.fillRect(14, shieldY + 6, 120 * (1 - ship.shieldCooldown / SHIELD_COOLDOWN), 5);
+  } else {
+    ctx.fillStyle = '#00ccff';
+    ctx.textAlign = 'left';
+    ctx.fillText('ESCUDO LISTO', 14, shieldY);
   }
 }
 
