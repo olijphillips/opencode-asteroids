@@ -29,6 +29,81 @@ const dist  = (a, b)   => Math.hypot(a.x - b.x, a.y - b.y);
 const rand  = (min, max) => min + Math.random() * (max - min);
 const randInt = (min, max) => Math.floor(rand(min, max + 1));
 
+// ── Skins ─────────────────────────────────────────────────────────────────────
+const SKINS = [
+  {
+    name: 'CLASICA',
+    color: '#fff',
+    draw(ctx) {
+      ctx.beginPath();
+      ctx.moveTo( 20,  0);
+      ctx.lineTo(-12, -9);
+      ctx.lineTo( -7,  0);
+      ctx.lineTo(-12,  9);
+      ctx.closePath();
+      ctx.stroke();
+    },
+  },
+  {
+    name: 'FLECHA',
+    color: '#00ccff',
+    draw(ctx) {
+      ctx.beginPath();
+      ctx.moveTo( 22,  0);
+      ctx.lineTo(-10, -11);
+      ctx.lineTo( -4,  0);
+      ctx.lineTo(-10,  11);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(6, 0);
+      ctx.lineTo(-6, 0);
+      ctx.stroke();
+    },
+  },
+  {
+    name: 'STEALTH',
+    color: '#00ff66',
+    draw(ctx) {
+      ctx.beginPath();
+      ctx.moveTo( 20,  0);
+      ctx.lineTo(  0, -10);
+      ctx.lineTo(-16,  0);
+      ctx.lineTo(  0,  10);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, -10);
+      ctx.lineTo(0,  10);
+      ctx.stroke();
+    },
+  },
+  {
+    name: 'NEON',
+    color: '#ff00ff',
+    glow: true,
+    draw(ctx) {
+      ctx.beginPath();
+      ctx.moveTo( 20,  0);
+      ctx.lineTo(-12, -10);
+      ctx.lineTo( -6,  0);
+      ctx.lineTo(-12,  10);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo( 14,  0);
+      ctx.lineTo(-8, -6);
+      ctx.lineTo( -4,  0);
+      ctx.lineTo(-8,  6);
+      ctx.closePath();
+      ctx.stroke();
+    },
+  },
+];
+
+let currentSkin = 0;
+let skinText = 0;
+
 // ── Bullet ────────────────────────────────────────────────────────────────────
 class Bullet {
   constructor(x, y, angle) {
@@ -312,14 +387,11 @@ class Ship {
     ctx.lineWidth   = 1.5;
     ctx.lineJoin    = 'round';
 
-    // Silueta clásica: triángulo con muesca trasera
-    ctx.beginPath();
-    ctx.moveTo( 20,  0);   // nariz
-    ctx.lineTo(-12, -9);   // ala izquierda
-    ctx.lineTo( -7,  0);   // muesca trasera
-    ctx.lineTo(-12,  9);   // ala derecha
-    ctx.closePath();
-    ctx.stroke();
+    const skin = SKINS[currentSkin];
+    ctx.strokeStyle = skin.color;
+    if (skin.glow) { ctx.shadowColor = skin.color; ctx.shadowBlur = 10; }
+    skin.draw(ctx);
+    if (skin.glow) ctx.shadowBlur = 0;
 
     // Llama del propulsor
     if (this.thrusting && Math.random() > 0.35) {
@@ -548,6 +620,12 @@ function update(dt) {
   if (screenFlash > 0) screenFlash -= dt;
   if (powerUpText > 0) powerUpText -= dt;
   if (comboFlash > 0) comboFlash -= dt;
+  if (skinText > 0) skinText -= dt;
+
+  if (pressed('KeyS')) {
+    currentSkin = (currentSkin + 1) % SKINS.length;
+    skinText = 1.5;
+  }
 
   shootingStarTimer -= dt;
   if (shootingStarTimer <= 0 && shootingStars.length === 0) {
@@ -725,6 +803,16 @@ function draw() {
     ctx.font = 'bold 52px monospace';
     ctx.textAlign = 'center';
     ctx.fillText('COMBO!', W / 2, H / 2 - 80);
+    ctx.restore();
+  }
+
+  if (skinText > 0) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, skinText);
+    ctx.fillStyle = SKINS[currentSkin].color;
+    ctx.font = 'bold 28px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(SKINS[currentSkin].name, W / 2, H / 2 + 60);
     ctx.restore();
   }
 
