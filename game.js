@@ -296,8 +296,8 @@ class SpeedPowerUp {
   constructor(x, y) {
     this.x = x;
     this.y = y;
-    this.radius = 12;
-    this.ttl = 8;
+    this.radius = 18;
+    this.ttl = 12;
     this.dead = false;
   }
 
@@ -310,15 +310,22 @@ class SpeedPowerUp {
     if (this.ttl < 2 && Math.floor(this.ttl * 6) % 2 === 0) return;
     ctx.save();
     ctx.translate(this.x, this.y);
-    ctx.strokeStyle = '#ffcc00';
+    const pulse = 0.4 + 0.6 * Math.abs(Math.sin(Date.now() * 0.005));
+    ctx.strokeStyle = `rgba(255, 204, 0, ${pulse.toFixed(2)})`;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo( 2, -10);
-    ctx.lineTo(-3,  -1);
-    ctx.lineTo( 2,  -1);
-    ctx.lineTo(-2,  10);
-    ctx.lineTo( 3,   1);
-    ctx.lineTo(-2,   1);
+    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = '#ffcc00';
+    ctx.lineWidth = 2.5;
+    const s = 1.5;
+    ctx.beginPath();
+    ctx.moveTo( 3*s, -10*s);
+    ctx.lineTo(-4*s,  -1*s);
+    ctx.lineTo( 3*s,  -1*s);
+    ctx.lineTo(-3*s,  10*s);
+    ctx.lineTo( 4*s,   1*s);
+    ctx.lineTo(-3*s,   1*s);
     ctx.closePath();
     ctx.stroke();
     ctx.restore();
@@ -431,7 +438,7 @@ function update(dt) {
         score += POINTS[a.size];
         explode(a.x, a.y, a.size * 5);
         newAsteroids.push(...a.split());
-        if (Math.random() < 0.15) speedPowerUps.push(new SpeedPowerUp(a.x, a.y));
+        if (Math.random() < 0.35) speedPowerUps.push(new SpeedPowerUp(a.x, a.y));
       }
     }
   }
