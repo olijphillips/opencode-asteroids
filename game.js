@@ -118,6 +118,105 @@ class Asteroid {
   }
 }
 
+// ── Shooting Star (Estrella Fugaz) ────────────────────────────────────────────
+const SHOOTING_STAR_POINTS = 200;
+const COMBO_COLORS = ['#ff0040', '#ffcc00', '#00ffcc', '#ff00ff', '#ff6600'];
+
+class ShootingStar {
+  constructor() {
+    this.radius = 25;
+    this.dead = false;
+    this.ttl = 6;
+    this.life = 6;
+    this.rot = rand(0, Math.PI * 2);
+    this.rotSpeed = rand(2, 4);
+
+    const edge = randInt(0, 3);
+    if (edge === 0)      { this.x = rand(0, W); this.y = -this.radius; }
+    else if (edge === 1) { this.x = W + this.radius; this.y = rand(0, H); }
+    else if (edge === 2) { this.x = rand(0, W); this.y = H + this.radius; }
+    else                 { this.x = -this.radius; this.y = rand(0, H); }
+
+    const targetX = W / 2 + rand(-200, 200);
+    const targetY = H / 2 + rand(-150, 150);
+    const angle = Math.atan2(targetY - this.y, targetX - this.x);
+    const speed = rand(160, 200);
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed;
+  }
+
+  update(dt) {
+    this.x = wrap(this.x + this.vx * dt, W);
+    this.y = wrap(this.y + this.vy * dt, H);
+    this.rot += this.rotSpeed * dt;
+    this.ttl -= dt;
+    if (this.ttl <= 0) this.dead = true;
+
+    if (Math.random() > 0.4) {
+      shootingStarParticles.push(new TrailParticle(this.x, this.y));
+    }
+  }
+
+  draw() {
+    const alpha = Math.min(1, this.ttl / (this.life * 0.3));
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.rot);
+    ctx.globalAlpha = alpha;
+
+    ctx.strokeStyle = '#00ffcc';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#00ffcc';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    for (let i = 0; i < 5; i++) {
+      const outerAngle = (i * 2 * Math.PI / 5) - Math.PI / 2;
+      const innerAngle = outerAngle + Math.PI / 5;
+      const ox = Math.cos(outerAngle) * this.radius;
+      const oy = Math.sin(outerAngle) * this.radius;
+      const ix = Math.cos(innerAngle) * this.radius * 0.45;
+      const iy = Math.sin(innerAngle) * this.radius * 0.45;
+      if (i === 0) ctx.moveTo(ox, oy);
+      else ctx.lineTo(ox, oy);
+      ctx.lineTo(ix, iy);
+    }
+    ctx.closePath();
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+}
+
+class TrailParticle {
+  constructor(x, y) {
+    this.x = x + rand(-4, 4);
+    this.y = y + rand(-4, 4);
+    this.vx = rand(-15, 15);
+    this.vy = rand(-15, 15);
+    this.life = rand(0.3, 0.7);
+    this.ttl = this.life;
+    this.dead = false;
+  }
+
+  update(dt) {
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    this.ttl -= dt;
+    if (this.ttl <= 0) this.dead = true;
+  }
+
+  draw() {
+    const alpha = this.ttl / this.life;
+    ctx.strokeStyle = `rgba(0,255,204,${alpha.toFixed(2)})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(this.x, this.y);
+    ctx.lineTo(this.x - this.vx * 0.04, this.y - this.vy * 0.04);
+    ctx.stroke();
+  }
+}
+
 // ── Ship ──────────────────────────────────────────────────────────────────────
 class Ship {
   constructor() { this.reset(); }
@@ -144,7 +243,8 @@ class Ship {
 
     const ROT   = 3.5;   // rad/s
     const THRUST = 260;  // px/s²
-    const DRAG   = 0.987;
+    const DRAG   = 0.97;
+    const MAX_SPEED = 280;
 
     if (keys['ArrowLeft'])  this.angle -= ROT * dt;
     if (keys['ArrowRight']) this.angle += ROT * dt;
@@ -157,6 +257,12 @@ class Ship {
 
     this.vx *= DRAG;
     this.vy *= DRAG;
+
+    const speed = Math.hypot(this.vx, this.vy);
+    if (speed > MAX_SPEED) {
+      this.vx = (this.vx / speed) * MAX_SPEED;
+      this.vy = (this.vy / speed) * MAX_SPEED;
+    }
     const speedMul = this.speedBoost > 0 ? 2 : 1;
     this.x = wrap(this.x + this.vx * dt * speedMul, W);
     this.y = wrap(this.y + this.vy * dt * speedMul, H);
@@ -334,6 +440,9 @@ class SpeedPowerUp {
 
 // ── Estado del juego ──────────────────────────────────────────────────────────
 let ship, bullets, asteroids, particles, speedPowerUps, speedParticles;
+let shootingStars, shootingStarParticles;
+let shootingStarTimer;
+let comboFlash = 0;
 let score, lives, level;
 let state;      // 'playing' | 'dead' | 'gameover'
 let deadTimer;
@@ -359,6 +468,10 @@ function initGame() {
   particles     = [];
   speedPowerUps = [];
   speedParticles = [];
+  shootingStars = [];
+  shootingStarParticles = [];
+  shootingStarTimer = rand(12, 15);
+  comboFlash = 0;
   score  = 0;
   lives  = 3;
   level  = 1;
@@ -372,6 +485,9 @@ function nextLevel() {
   particles     = [];
   speedPowerUps = [];
   speedParticles = [];
+  shootingStars = [];
+  shootingStarParticles = [];
+  shootingStarTimer = rand(12, 15);
   ship.reset();
   spawnAsteroids(3 + level);
 }
@@ -420,13 +536,24 @@ function update(dt) {
   asteroids.forEach(a => a.update(dt));
   particles.forEach(p => p.update(dt));
   speedParticles.forEach(p => p.update(dt));
+  shootingStars.forEach(s => s.update(dt));
+  shootingStarParticles.forEach(p => p.update(dt));
 
   bullets   = bullets.filter(b => !b.dead);
   particles = particles.filter(p => !p.dead);
   speedParticles = speedParticles.filter(p => !p.dead);
+  shootingStars = shootingStars.filter(s => !s.dead);
+  shootingStarParticles = shootingStarParticles.filter(p => !p.dead);
 
   if (screenFlash > 0) screenFlash -= dt;
   if (powerUpText > 0) powerUpText -= dt;
+  if (comboFlash > 0) comboFlash -= dt;
+
+  shootingStarTimer -= dt;
+  if (shootingStarTimer <= 0 && shootingStars.length === 0) {
+    shootingStars.push(new ShootingStar());
+    shootingStarTimer = rand(12, 15);
+  }
 
   // Bala vs asteroide
   const newAsteroids = [];
@@ -445,6 +572,20 @@ function update(dt) {
   asteroids = asteroids.filter(a => !a.dead).concat(newAsteroids);
   bullets   = bullets.filter(b => !b.dead);
 
+  for (const b of bullets) {
+    for (const s of shootingStars) {
+      if (!s.dead && !b.dead && dist(b, s) < s.radius) {
+        b.dead = true;
+        s.dead = true;
+        score += SHOOTING_STAR_POINTS;
+        explode(s.x, s.y, 18);
+        comboFlash = 0.8;
+      }
+    }
+  }
+  shootingStars = shootingStars.filter(s => !s.dead);
+  bullets       = bullets.filter(b => !b.dead);
+
   speedPowerUps.forEach(p => p.update(dt));
   speedPowerUps = speedPowerUps.filter(p => !p.dead);
 
@@ -462,6 +603,16 @@ function update(dt) {
   if (ship.invincible <= 0) {
     for (const a of asteroids) {
       if (dist(ship, a) < ship.radius + a.radius * 0.82) {
+        killShip();
+        break;
+      }
+    }
+  }
+
+  // Nave vs estrella fugaz
+  if (ship.invincible <= 0) {
+    for (const s of shootingStars) {
+      if (dist(ship, s) < ship.radius + s.radius * 0.82) {
         killShip();
         break;
       }
@@ -529,8 +680,10 @@ function draw() {
   ctx.fillRect(0, 0, W, H);
 
   speedParticles.forEach(p => p.draw());
+  shootingStarParticles.forEach(p => p.draw());
   particles.forEach(p => p.draw());
   asteroids.forEach(a => a.draw());
+  shootingStars.forEach(s => s.draw());
   speedPowerUps.forEach(p => p.draw());
   bullets.forEach(b => b.draw());
   ship.draw();
@@ -550,6 +703,28 @@ function draw() {
     ctx.font = 'bold 42px monospace';
     ctx.textAlign = 'center';
     ctx.fillText('VELOCIDAD x2!', W / 2, H / 2 - 60);
+    ctx.restore();
+  }
+
+  if (comboFlash > 0) {
+    const colorIndex = Math.floor(comboFlash * 12) % COMBO_COLORS.length;
+    const color = COMBO_COLORS[colorIndex];
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, comboFlash * 1.5);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 6;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 20;
+    ctx.strokeRect(3, 3, W - 6, H - 6);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, comboFlash * 2);
+    ctx.fillStyle = color;
+    ctx.font = 'bold 52px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('COMBO!', W / 2, H / 2 - 80);
     ctx.restore();
   }
 
