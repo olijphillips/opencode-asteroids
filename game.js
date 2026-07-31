@@ -99,6 +99,26 @@ const SKINS = [
       ctx.stroke();
     },
   },
+  {
+    name: 'TITAN',
+    color: '#9b30ff',
+    radius: 24,
+    pointsMultiplier: 2,
+    glow: true,
+    draw(ctx) {
+      ctx.beginPath();
+      ctx.moveTo( 40,  0);
+      ctx.lineTo(-24, -18);
+      ctx.lineTo(-14,  0);
+      ctx.lineTo(-24,  18);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-24, -18);
+      ctx.lineTo(-24,  18);
+      ctx.stroke();
+    },
+  },
 ];
 
 let currentSkin = 0;
@@ -305,7 +325,7 @@ class Ship {
     this.angle  = -Math.PI / 2;
     this.vx     = 0;
     this.vy     = 0;
-    this.radius = 12;
+    this.radius = SKINS[currentSkin].radius || 12;
     this.thrusting     = false;
     this.invincible    = 3;
     this.shootCooldown = 0;
@@ -373,7 +393,8 @@ class Ship {
   tryShoot() {
     if (this.shootCooldown > 0 || this.dead) return [];
     this.shootCooldown = 0.2;
-    const NOSE = 21;
+    const s = (SKINS[currentSkin].radius || 12) / 12;
+    const NOSE = 21 * s;
     const ox = this.x + Math.cos(this.angle) * NOSE;
     const oy = this.y + Math.sin(this.angle) * NOSE;
     if (this.tripleShot > 0) {
@@ -449,10 +470,11 @@ class Ship {
 
     // Llama del propulsor
     if (this.thrusting && Math.random() > 0.35) {
+      const fs = (SKINS[currentSkin].radius || 12) / 12;
       ctx.beginPath();
-      ctx.moveTo(-8, -4);
-      ctx.lineTo(-8 - rand(6, 14), 0);
-      ctx.lineTo(-8,  4);
+      ctx.moveTo(-8 * fs, -4 * fs);
+      ctx.lineTo(-8 * fs - rand(6 * fs, 14 * fs), 0);
+      ctx.lineTo(-8 * fs,  4 * fs);
       ctx.strokeStyle = this.speedBoost > 0 ? 'rgba(255, 204, 0, 0.85)' : 'rgba(255, 130, 0, 0.85)';
       ctx.stroke();
     }
@@ -725,6 +747,7 @@ function update(dt) {
   if (pressed('KeyS')) {
     currentSkin = (currentSkin + 1) % SKINS.length;
     skinText = 1.5;
+    ship.radius = SKINS[currentSkin].radius || 12;
   }
 
   shootingStarTimer -= dt;
@@ -735,12 +758,13 @@ function update(dt) {
 
   // Bala vs asteroide
   const newAsteroids = [];
+  const ptsMul = SKINS[currentSkin].pointsMultiplier || 1;
   for (const b of bullets) {
     for (const a of asteroids) {
       if (!a.dead && !b.dead && dist(b, a) < a.radius) {
         b.dead = true;
         a.dead = true;
-        score += POINTS[a.size];
+        score += POINTS[a.size] * ptsMul;
         explode(a.x, a.y, a.size * 5);
         newAsteroids.push(...a.split());
         if (Math.random() < 0.35) speedPowerUps.push(new SpeedPowerUp(a.x, a.y));
@@ -756,7 +780,7 @@ function update(dt) {
       if (!s.dead && !b.dead && dist(b, s) < s.radius) {
         b.dead = true;
         s.dead = true;
-        score += SHOOTING_STAR_POINTS;
+        score += SHOOTING_STAR_POINTS * ptsMul;
         explode(s.x, s.y, 18);
         comboFlash = 0.8;
       }
@@ -798,7 +822,7 @@ function update(dt) {
           ship.shieldActive = false;
           ship.shieldCooldown = SHIELD_COOLDOWN;
           a.dead = true;
-          score += POINTS[a.size];
+          score += POINTS[a.size] * ptsMul;
           explode(a.x, a.y, a.size * 5);
           asteroids = asteroids.filter(ast => !ast.dead).concat(a.split());
           screenFlash = 0.2;
@@ -818,7 +842,7 @@ function update(dt) {
           ship.shieldActive = false;
           ship.shieldCooldown = SHIELD_COOLDOWN;
           s.dead = true;
-          score += SHOOTING_STAR_POINTS;
+          score += SHOOTING_STAR_POINTS * ptsMul;
           explode(s.x, s.y, 18);
           screenFlash = 0.2;
         } else {
@@ -904,6 +928,13 @@ function drawHUD() {
     ctx.fillStyle = '#00ccff';
     ctx.textAlign = 'left';
     ctx.fillText('ESCUDO LISTO', 14, hudY);
+  }
+
+  if ((SKINS[currentSkin].pointsMultiplier || 1) > 1) {
+    hudY += 22;
+    ctx.fillStyle = '#9b30ff';
+    ctx.textAlign = 'left';
+    ctx.fillText(`PUNTOS x${SKINS[currentSkin].pointsMultiplier}`, 14, hudY);
   }
 }
 
