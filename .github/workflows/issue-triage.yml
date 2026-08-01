@@ -1,0 +1,113 @@
+name: Issue Triage
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: AI Label + Context Append
+        uses: actions/github-script@v7
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const title = issue.title;
+            const body = issue.body || '';
+
+            const AVAILABLE_LABELS = [
+              'bug', 'enhancement', 'documentation', 'question',
+              'good first issue', 'performance', 'ui/ux', 'gameplay'
+            ];
+
+            let aiLabels = [];
+
+            const systemPrompt = [
+              'You are a GitHub issue classifier for an Asteroids arcade game clone built with HTML5 Canvas and vanilla JavaScript (ES6+).',
+              '',
+              'Available labels: ' + AVAILABLE_LABELS.join(', '),
+              '',
+              'Analyze the issue title and body, then return ONLY a JSON array of applicable labels (1-3 max). No explanation, no markdown, just the array.',
+              '',
+              'Examples:',
+              '* "The ship does not rotate" -> ["bug", "gameplay"]',
+              '* "Add sound effects" -> ["enhancement"]',
+              '* "How do I run the game?" -> ["question", "documentation"]',
+              '* "Game lags with many particles" -> ["performance"]'
+            ].join('\n');
+
+            try {
+              const response = await fetch('https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer ' + process.env.DASHSCOPE_API_KEY
+                },
+                body: JSON.stringify({
+                  model: 'qwen3.7-max',
+                  messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: 'Title: ' + title + '\n\nBody: ' + body }
+                  ],
+                  temperature: 0.1,
+                  max_tokens: 50
+                })
+              });
+
+              const data = await response.json();
+              const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+              
+              if (content) {
+                const cleaned = content.trim().replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+                const parsed = JSON.parse(cleaned);
+                aiLabels = parsed.filter(function(l) { return AVAILABLE_LABELS.includes(l); });
+              }
+            } catch (err) {
+              core.warning('AI labeling failed: ' + err.message);
+            }
+
+            if (aiLabels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: aiLabels
+              });
+              core.info('Added labels: ' + aiLabels.join(', '));
+            }
+
+            const contextLines = [
+              '',
+              '---',
+              '',
+              '<details>',
+              '<summary>📋 Contexto del proyecto</summary>',
+              '',
+              '* **Tech**: HTML5 Canvas + JS ES6+ puro, sin dependencias',
+              '* **Archivo principal**: `game.js` (toda la lógica en un solo archivo)',
+              '* **Correr**: `npx serve .` -> http://localhost:3000',
+              '* **Controles**: flechas rotar/propulsar, Espacio disparar',
+              '* **Resolución**: 800x600 fijo, wrapping toroidal',
+              '* **Estados**: `playing` | `dead` | `gameover`',
+              '* **Clases**: `Ship`, `Bullet`, `Asteroid`, `Particle`',
+              '',
+              '</details>'
+            ];
+
+            const contextBlock = contextLines.join('\n');
+            const updatedBody = body + contextBlock;
+
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: updatedBody
+            });
+
+            core.info('Appended project context to issue body');
