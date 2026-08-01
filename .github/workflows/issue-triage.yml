@@ -11,7 +11,7 @@ jobs:
   triage:
     runs-on: ubuntu-latest
     steps:
-      - name: AI Label + Context Append
+      - name: AI Triage
         uses: actions/github-script@v7
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
@@ -26,21 +26,25 @@ jobs:
               'good first issue', 'performance', 'ui/ux', 'gameplay'
             ];
 
-            let aiLabels = [];
-
             const systemPrompt = [
-              'You are a GitHub issue classifier for an Asteroids arcade game clone built with HTML5 Canvas and vanilla JavaScript (ES6+).',
+              'You are a GitHub issue triage assistant for an Asteroids arcade game (HTML5 Canvas, vanilla JS).',
               '',
               'Available labels: ' + AVAILABLE_LABELS.join(', '),
               '',
-              'Analyze the issue title and body, then return ONLY a JSON array of applicable labels (1-3 max). No explanation, no markdown, just the array.',
+              'Analyze the issue and return ONLY a JSON object with two fields:',
+              '- "labels": array of 1-3 applicable labels',
+              '- "summary": a short 1-2 line summary in Spanish of what the issue is about',
+              '',
+              'No explanation, no markdown fences, just the JSON object.',
               '',
               'Examples:',
-              '* "The ship does not rotate" -> ["bug", "gameplay"]',
-              '* "Add sound effects" -> ["enhancement"]',
-              '* "How do I run the game?" -> ["question", "documentation"]',
-              '* "Game lags with many particles" -> ["performance"]'
+              '* "La nave no rota" -> {"labels":["bug","gameplay"],"summary":"La rotacion de la nave no responde al input del teclado."}',
+              '* "Add sound effects" -> {"labels":["enhancement"],"summary":"Se solicita agregar efectos de sonido al juego."}',
+              '* "Game lags" -> {"labels":["performance"],"summary":"El juego tiene problemas de rendimiento con muchas particulas en pantalla."}'
             ].join('\n');
+
+            let aiLabels = [];
+            let aiSummary = '';
 
             try {
               const response = await fetch('https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions', {
@@ -56,20 +60,21 @@ jobs:
                     { role: 'user', content: 'Title: ' + title + '\n\nBody: ' + body }
                   ],
                   temperature: 0.1,
-                  max_tokens: 50
+                  max_tokens: 150
                 })
               });
 
               const data = await response.json();
               const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-              
+
               if (content) {
                 const cleaned = content.trim().replace(/```json?\n?/g, '').replace(/```/g, '').trim();
                 const parsed = JSON.parse(cleaned);
-                aiLabels = parsed.filter(function(l) { return AVAILABLE_LABELS.includes(l); });
+                aiLabels = (parsed.labels || []).filter(function(l) { return AVAILABLE_LABELS.includes(l); });
+                aiSummary = parsed.summary || '';
               }
             } catch (err) {
-              core.warning('AI labeling failed: ' + err.message);
+              core.warning('AI triage failed: ' + err.message);
             }
 
             if (aiLabels.length > 0) {
@@ -82,32 +87,16 @@ jobs:
               core.info('Added labels: ' + aiLabels.join(', '));
             }
 
-            const contextLines = [
-              '',
-              '---',
-              '',
-              '<details>',
-              '<summary>📋 Contexto del proyecto</summary>',
-              '',
-              '* **Tech**: HTML5 Canvas + JS ES6+ puro, sin dependencias',
-              '* **Archivo principal**: `game.js` (toda la lógica en un solo archivo)',
-              '* **Correr**: `npx serve .` -> http://localhost:3000',
-              '* **Controles**: flechas rotar/propulsar, Espacio disparar',
-              '* **Resolución**: 800x600 fijo, wrapping toroidal',
-              '* **Estados**: `playing` | `dead` | `gameover`',
-              '* **Clases**: `Ship`, `Bullet`, `Asteroid`, `Particle`',
-              '',
-              '</details>'
-            ];
+            if (aiSummary) {
+              const appendBlock = '\n\n---\n\n> ' + aiSummary;
+              const updatedBody = body + appendBlock;
 
-            const contextBlock = contextLines.join('\n');
-            const updatedBody = body + contextBlock;
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: updatedBody
+              });
 
-            await github.rest.issues.update({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issue.number,
-              body: updatedBody
-            });
-
-            core.info('Appended project context to issue body');
+              core.info('Appended summary to issue body');
+            }
